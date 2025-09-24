@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+
 	"main/controllers"
 	"main/intializers"
+	"main/middleware"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +28,9 @@ func main() {
 	r.GET("/notes/:id", controllers.GetNotesbyid)
 	r.PUT("/notes/:id", controllers.UpdateNote)
 	r.DELETE("/notes/:id", controllers.DeleteNote)
+	r.POST("/signup", controllers.SignUp)
+	r.POST("/login", controllers.Login)
+	r.GET("/validate", middleware.RequireAuth, controllers.Validate)
 
 	port := os.Getenv("PORT")
 	if port == "" {
