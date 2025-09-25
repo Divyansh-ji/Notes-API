@@ -127,3 +127,20 @@ func DeleteNote(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"note": note})
 
 }
+func DeletingUser(c *gin.Context) {
+	id := c.Param("id")
+	idint, err := strconv.Atoi(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid note ID"})
+		return
+
+	}
+	var users models.User
+	if err := intializers.DB.First(&users, idint).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Note not found"})
+		return
+	}
+	intializers.DB.Delete(&users)
+	c.JSON(http.StatusOK, gin.H{"note": users})
+
+}

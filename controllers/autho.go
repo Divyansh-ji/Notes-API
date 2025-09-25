@@ -3,12 +3,12 @@ package controllers
 import (
 	"main/intializers"
 	"main/models"
+	"main/utils"
+
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -66,28 +66,49 @@ func Login(c *gin.Context) {
 		return
 
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user.ID,
-		"exp": time.Now().Add(time.Hour * 24 * 30).Unix(),
+	// 3. Create access token (short-lived)
+	accessToken, err := utils.CreateJWT(user.ID, 15*time.Minute)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Could not create access token"})
+		return
+	}
+
+	// 4. Create refresh token (long-lived JWT)
+	refreshToken, err := utils.CreateRefreshJWT(user.ID, 7*24*time.Hour)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Could not create refresh token"})
+		return
+	}
+
+	// 5. Set refresh token in HttpOnly cookie
+	c.SetCookie("refresh_token", refreshToken, int((7 * 24 * time.Hour).Seconds()), "/", "localhost", false, true)
+
+	c.JSON(200, gin.H{
+		"access token": accessToken,
 	})
 
-	// Sign and get the complete encoded token as a string using the secret
-	tokenString, err := token.SignedString([]byte(os.Getenv("SECRET")))
+}
 
+func Logout(c *gin.Context) {
+	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
-		c.JSON(404, gin.H{
-			"error": "Invalid user /login credentialas",
+		c.JSON(400, gin.H{
+			"error": "unauthorised refrsh token has been given by the cookies",
 		})
 		return
-
 	}
-	//send it back
-	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("Authorization", tokenString, 3600*24*30, "", "", false, true)
 
-	c.JSON(200, gin.H{})
+	// delete token from the DB
+	intializers.DB.Where("token = ?", refreshToken).Delete(&models.RefreshToken{})
+
+	//remove the cookies
+	c.SetCookie("refresh_token", "", -1, "/", "localhost", false, true)
+	c.JSON(200, gin.H{
+		"message": "logout has been successfully",
+	})
 
 }
+
 func Validate(c *gin.Context) {
 
 	c.JSON(200, gin.H{

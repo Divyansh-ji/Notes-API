@@ -225,3 +225,4 @@ curl -X DELETE http://localhost:8080/notes/1
 
 ### 📄 License
 This project is open-source. Use it as you like.
+

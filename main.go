@@ -28,8 +28,11 @@ func main() {
 	r.GET("/notes/:id", controllers.GetNotesbyid)
 	r.PUT("/notes/:id", controllers.UpdateNote)
 	r.DELETE("/notes/:id", controllers.DeleteNote)
+	r.DELETE("/user/:id", controllers.DeletingUser)
 	r.POST("/signup", controllers.SignUp)
 	r.POST("/login", controllers.Login)
+	r.POST("/refreshToken", controllers.RefreshToken)
+	r.GET("/logout", controllers.Logout)
 	r.GET("/validate", middleware.RequireAuth, controllers.Validate)
 
 	port := os.Getenv("PORT")
