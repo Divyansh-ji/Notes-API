@@ -5,7 +5,9 @@ A clean and minimal REST API for a Notes application built with Go, Gin, GORM, P
 ---
 
 ### ✨ Features
-- **JWT auth with HttpOnly cookies**: Signup, login, and a protected validation route
+- **JWT auth (access + refresh)**: Access token in JSON, refresh token in HttpOnly cookie
+- **Refresh flow & logout**: `/refreshToken` issues new access tokens; `/logout` clears refresh cookie
+- **Protected route**: `/validate` guarded by middleware
 - **Notes CRUD**: Create, read, update, and delete notes
 - **PostgreSQL with GORM**: Auto-migration for models
 - **12-factor ready**: Configuration via environment variables
@@ -26,17 +28,21 @@ A clean and minimal REST API for a Notes application built with Go, Gin, GORM, P
 ```text
 /Notes-App
   ├─ controllers/
-  │   ├─ autho.go           # Signup, Login, Validate
-  │   └─ controllers.go     # User create, Notes CRUD
+  │   ├─ autho.go                 # Signup, Login, Logout, Validate
+  │   ├─ controllers.go           # User create, Notes CRUD
+  │   └─ refreshControllers.go    # Refresh access token
   ├─ intializers/
-  │   ├─ datbase.go         # ConnectToDB (Postgres via GORM)
-  │   ├─ LoadEnvVar.go      # Load .env via godotenv
-  │   └─ SyncDatabase.go    # AutoMigrate(User, Note)
+  │   ├─ datbase.go               # ConnectToDB (Postgres via GORM)
+  │   ├─ LoadEnvVar.go            # Load .env via godotenv
+  │   └─ SyncDatabase.go          # AutoMigrate(User, Note, RefreshToken)
   ├─ middleware/
-  │   └─ Reqautho.go        # RequireAuth middleware (JWT cookie)
+  │   └─ Reqautho.go              # RequireAuth middleware (reads Authorization cookie)
   ├─ models/
-  │   ├─ notes.go           # Note model
-  │   └─ user.go            # User model
+  │   ├─ notes.go                 # Note model
+  │   ├─ refresh.go               # RefreshToken model
+  │   └─ user.go                  # User model
+  ├─ utils/
+  │   └─ jwt.go                   # JWT helpers (access & refresh)
   ├─ main.go                # Router, routes, bootstrapping
   ├─ go.mod
   └─ go.sum
@@ -62,6 +68,14 @@ A clean and minimal REST API for a Notes application built with Go, Gin, GORM, P
    Content string
    UserID  uint  // FK to User
  }
+
+// models/refresh.go
+ type RefreshToken struct {
+   ID        uint `gorm:"primaryKey"`
+   Token     string
+   UserID    uint
+   ExpiresAt time.Time
+ }
 ```
 - Relations: One `User` has many `Note`.
 - Auto-migrations are executed during startup via `SyncDataBase()`.
@@ -70,12 +84,15 @@ A clean and minimal REST API for a Notes application built with Go, Gin, GORM, P
 
 ### 🔐 Authentication Flow
 - `POST /signup`: Creates a user with a bcrypt-hashed password.
-- `POST /login`: Verifies credentials, then returns a signed JWT stored in an `Authorization` cookie (HttpOnly, SameSite=Lax).
-- `GET /validate`: Protected route using `RequireAuth` middleware; returns a simple success payload if token is valid and not expired.
+- `POST /login`: Verifies credentials, then returns a short-lived access token in JSON and sets a long-lived refresh token in an HttpOnly cookie named `refresh_token`.
+- `POST /refreshToken`: Reads `refresh_token` cookie and issues a new access token in JSON.
+- `GET /logout`: Clears the `refresh_token` cookie and deletes it from storage.
+- `GET /validate`: Protected route using `RequireAuth` middleware; it expects an `Authorization` cookie containing a valid access token.
 
 JWT details:
 - Algorithm: HS256
-- Claims: `sub` (user ID), `exp` (30 days)
+- Access token claims: `user_id`, `exp`, `type: "access"` (default lifespan ~15m)
+- Refresh token claims: `user_id`, `exp`, `type: "refresh"` (default lifespan ~7d)
 - Secret: `SECRET` environment variable
 
 ---
@@ -91,11 +108,19 @@ Base URL: `http://localhost:<PORT>` (defaults to `8080`)
 
 - `POST /login`
   - Body (form or JSON): `{ "Email": string, "Password": string }`
-  - Sets cookie: `Authorization=<JWT>`
-  - Response: `200 {}`
+  - Sets cookie: `refresh_token=<JWT>` (HttpOnly)
+  - Response: `200 { "access token": string }`
+
+- `POST /refreshToken`
+  - Reads cookie: `refresh_token`
+  - Response: `200 { "access_token": string }`
+
+- `GET /logout`
+  - Clears cookie: `refresh_token`
+  - Response: `200 { "message": string }`
 
 - `GET /validate` (protected)
-  - Header/Cookie: `Authorization` cookie must be present
+  - Cookie: `Authorization=<ACCESS_TOKEN>` must be present (see cURL below)
   - Response: `200 { "message": "i am logged in" }`
 
 #### Users
@@ -153,6 +178,7 @@ You should see:
 - and a successful DB connection log
 
 GORM will auto-migrate `User` and `Note` tables on startup.
+It will also create `RefreshToken` if referenced by the migrator.
 
 ---
 
@@ -163,14 +189,23 @@ curl -X POST http://localhost:8080/signup \
   -H "Content-Type: application/json" \
   -d '{"Email":"alice@example.com","Password":"SuperSecret123"}'
 
-# Login (stores cookie)
+# Login: gets access token JSON and sets refresh_token cookie
 curl -X POST http://localhost:8080/login \
   -H "Content-Type: application/json" \
   -d '{"Email":"alice@example.com","Password":"SuperSecret123"}' -i
 
-# Validate (send cookie from login response)
+# Suppose the login response JSON was: {"access token":"ACCESS_TOKEN_VALUE"}
+# Set the access token as Authorization cookie for protected routes
+
+# Validate (send Authorization cookie)
 curl http://localhost:8080/validate \
-  --cookie "Authorization=REPLACE_WITH_JWT"
+  --cookie "Authorization=ACCESS_TOKEN_VALUE"
+
+# Refresh access token (uses refresh_token cookie set by login)
+curl -X POST http://localhost:8080/refreshToken
+
+# Logout (clears refresh_token cookie)
+curl http://localhost:8080/logout
 
 # Create a note
 curl -X POST http://localhost:8080/notes \
