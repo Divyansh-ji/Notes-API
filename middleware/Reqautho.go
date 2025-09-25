@@ -15,7 +15,7 @@ import (
 func RequireAuth(c *gin.Context) {
 	// get the cookies off req
 
-	tokenString, err := c.Cookie("Authorization")
+	tokenString, err := c.Cookie("refresh_token")
 
 	if err != nil {
 		c.AbortWithStatus(http.StatusUnauthorized)

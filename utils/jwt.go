@@ -8,9 +8,11 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtKey = []byte(os.Getenv("SECRET"))
+func getJWTKey() []byte {
+	return []byte(os.Getenv("SECRET"))
+}
 
-// Create Access Token (short-lived)
+// Create Access Token
 func CreateJWT(userID uint, duration time.Duration) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
@@ -18,10 +20,10 @@ func CreateJWT(userID uint, duration time.Duration) (string, error) {
 		"type":    "access",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtKey)
+	return token.SignedString(getJWTKey())
 }
 
-// Create Refresh Token (long-lived)
+// Create Refresh Token
 func CreateRefreshJWT(userID uint, duration time.Duration) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
@@ -29,11 +31,12 @@ func CreateRefreshJWT(userID uint, duration time.Duration) (string, error) {
 		"type":    "refresh",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtKey)
+	return token.SignedString(getJWTKey())
 }
+
 func ParseAndValidateJWT(tokenStr string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-		return jwtKey, nil
+		return getJWTKey(), nil
 	})
 	if err != nil {
 		return nil, err
