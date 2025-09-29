@@ -13,6 +13,7 @@ import (
 )
 
 func SignUp(c *gin.Context) {
+	//take the info from the request body
 	var users struct {
 		Email    string
 		Password string
@@ -41,7 +42,7 @@ func SignUp(c *gin.Context) {
 
 }
 func Login(c *gin.Context) {
-
+//bind the data from the request body
 	var users struct {
 		Email    string
 		Password string
